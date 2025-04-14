@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bot Access Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    body {
+      font-family: 'Courier New', monospace;
+      background: linear-gradient(135deg, #0f0f0f, #1a1a1a);
+    }
+
+    .glass {
+      backdrop-filter: blur(12px);
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .fade-in {
+      animation: fadeIn 0.6s ease-out both;
+    }
+
+    @keyframes fadeIn {
+      0% {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex items-center justify-center px-4 py-10 text-white">
+  <div class="w-full max-w-5xl fade-in">
+    <h1 class="text-4xl text-center mb-8 font-bold tracking-wide text-cyan-400">Bot Access Dashboard</h1>
+    <div class="overflow-x-auto rounded-lg glass p-4 shadow-lg">
+      <table class="w-full text-sm text-left">
+        <thead class="uppercase text-cyan-300 border-b border-cyan-800">
+          <tr>
+            <th class="py-3 px-4">User ID</th>
+            <th class="py-3 px-4">Expiration</th>
+            <th class="py-3 px-4">Status</th>
+            <th class="py-3 px-4">Action</th>
+          </tr>
+        </thead>
+        <tbody id="userTableBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    async function fetchUsers() {
+      const res = await fetch('/api/users');
+      const users = await res.json();
+      const tbody = document.querySelector("#userTableBody");
+      tbody.innerHTML = "";
+
+      users.forEach(user => {
+        const expired = Date.now() > user.expiration_date;
+        const expireDate = new Date(user.expiration_date).toLocaleString();
+        const statusClass = expired ? 'text-red-400' : 'text-green-400';
+
+        const row = document.createElement("tr");
+        row.className = "border-b border-cyan-800 hover:bg-white/5 transition";
+        row.innerHTML = `
+          <td class="py-3 px-4">${user.user_id}</td>
+          <td class="py-3 px-4">
+            <div>
+              <div>${expireDate}</div>
+              <div class="text-sm text-cyan-300" id="countdown-${user.user_id}"></div>
+            </div>
+          </td>
+          <td class="py-3 px-4 ${statusClass}" id="status-${user.user_id}">
+            ${expired ? 'Expired' : 'Active'}
+          </td>
+          <td class="py-3 px-4">
+            <button onclick="deleteUser('${user.user_id}')" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded transition">Delete</button>
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      startCountdowns(users);
+    }
+
+    async function deleteUser(userId) {
+      const confirm = await Swal.fire({
+        title: 'Are you sure?',
+        text: "You are about to delete this user.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        cancelButtonColor: '#6b7280',
+        confirmButtonText: 'Yes, delete it!'
+      });
+
+      if (!confirm.isConfirmed) return;
+
+      const res = await fetch('/api/delete-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ user_id: userId })
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        await Swal.fire({
+          title: 'Deleted!',
+          text: 'User has been successfully removed.',
+          icon: 'success',
+          confirmButtonColor: '#0ea5e9'
+        });
+        fetchUsers();
+      } else {
+        Swal.fire({
+          title: 'Error!',
+          text: result.message || 'Something went wrong.',
+          icon: 'error',
+          confirmButtonColor: '#e11d48'
+        });
+      }
+    }
+
+    function startCountdowns(users) {
+      setInterval(() => {
+        users.forEach(user => {
+          const countdownEl = document.getElementById(`countdown-${user.user_id}`);
+          const statusEl = document.getElementById(`status-${user.user_id}`);
+          if (!countdownEl || !statusEl) return;
+
+          const now = Date.now();
+          const diff = user.expiration_date - now;
+
+          if (diff <= 0) {
+            countdownEl.textContent = "Expired";
+            countdownEl.classList.remove("text-cyan-300");
+            countdownEl.classList.add("text-red-400");
+
+            statusEl.textContent = "Expired";
+            statusEl.classList.remove("text-green-400");
+            statusEl.classList.add("text-red-400");
+            return;
+          }
+
+          const hours = Math.floor(diff / (1000 * 60 * 60));
+          const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+          countdownEl.textContent = `${hours}h ${minutes}m ${seconds}s`;
+        });
+      }, 1000);
+    }
+
+    fetchUsers();
+  </script>
+</body>
+</html>
